@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VideoForge — Convertisseur Vidéo</title>
+
+<!-- ✅ FIX GitHub Pages : active Cross-Origin Isolation via Service Worker -->
+<!-- La page va se recharger UNE seule fois automatiquement, c'est normal -->
+<script src="https://cdn.jsdelivr.net/npm/coi-serviceworker@0.1.7/coi-serviceworker.min.js"></script>
+
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0f; --surface: #12121a; --card: #1a1a26;
+    --border: #2a2a3e; --accent: #e8ff3a; --accent2: #ff6b35;
+    --text: #f0f0f5; --muted: #6e6e8a;
+    --success: #3affa0; --error: #ff3a6e; --progress-bg: #1e1e2e;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Syne', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; overflow-x: hidden; }
+  body::before {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(rgba(232,255,58,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(232,255,58,0.03) 1px, transparent 1px);
+    background-size: 40px 40px; pointer-events: none; z-index: 0;
+  }
+  .container { max-width: 800px; margin: 0 auto; padding: 40px 20px 80px; position: relative; z-index: 1; }
+  header { margin-bottom: 48px; text-align: center; }
+  .logo-badge {
+    display: inline-block; background: var(--accent); color: var(--bg);
+    font-family: 'Space Mono', monospace; font-size: 11px; font-weight: 700;
+    letter-spacing: 3px; padding: 5px 14px; text-transform: uppercase; margin-bottom: 16px;
+    clip-path: polygon(8px 0%, 100% 0%, calc(100% - 8px) 100%, 0% 100%);
+  }
+  h1 { font-size: clamp(2.4rem, 6vw, 3.8rem); font-weight: 800; line-height: 1; letter-spacing: -2px; margin-bottom: 10px; }
+  h1 span { color: var(--accent); }
+  .subtitle { font-family: 'Space Mono', monospace; color: var(--muted); font-size: 12px; letter-spacing: 2px; text-transform: uppercase; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 2px; padding: 28px; margin-bottom: 16px; position: relative; }
+  .card::before { content: ''; position: absolute; top: 0; left: 0; width: 3px; height: 100%; background: var(--accent); border-radius: 2px 0 0 2px; }
+  .card-title { font-family: 'Space Mono', monospace; font-size: 10px; font-weight: 700; letter-spacing: 3px; text-transform: uppercase; color: var(--accent); margin-bottom: 20px; display: flex; align-items: center; gap: 10px; }
+  .card-title::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+  .drop-zone { border: 2px dashed var(--border); border-radius: 2px; padding: 40px 20px; text-align: center; cursor: pointer; transition: all 0.2s; background: var(--surface); position: relative; overflow: hidden; }
+  .drop-zone:hover, .drop-zone.drag-over { border-color: var(--accent); background: rgba(232,255,58,0.04); }
+  .drop-zone input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+  .drop-icon { font-size: 2.5rem; margin-bottom: 12px; display: block; }
+  .drop-title { font-size: 1.1rem; font-weight: 700; margin-bottom: 6px; }
+  .drop-sub { font-family: 'Space Mono', monospace; font-size: 11px; color: var(--muted); }
+  .file-info { margin-top: 16px; padding: 12px 16px; background: rgba(232,255,58,0.08); border: 1px solid rgba(232,255,58,0.2); border-radius: 2px; display: none; align-items: center; gap: 12px; }
+  .file-info.show { display: flex; }
+  .file-info-icon { font-size: 1.5rem; }
+  .file-info-name { font-weight: 700; font-size: 0.9rem; word-break: break-all; }
+  .file-info-size { font-family: 'Space Mono', monospace; font-size: 11px; color: var(--muted); }
+  .options-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+  @media (max-width: 540px) { .options-grid { grid-template-columns: 1fr; } }
+  .option-group { display: flex; flex-direction: column; gap: 8px; }
+  .option-group.full { grid-column: 1 / -1; }
+  label { font-family: 'Space Mono', monospace; font-size: 10px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: var(--muted); }
+  select {
+    width: 100%; background: var(--surface); border: 1px solid var(--border); border-radius: 2px;
+    color: var(--text); font-family: 'Space Mono', monospace; font-size: 13px;
+    padding: 10px 36px 10px 14px; outline: none; transition: border-color 0.2s; appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%236e6e8a' stroke-width='1.5' fill='none'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 12px center;
+  }
+  select:focus { border-color: var(--accent); }
+  select option { background: var(--card); }
+  input[type="range"] { flex: 1; cursor: pointer; accent-color: var(--accent); background: transparent; border: none; }
+  .range-row { display: flex; align-items: center; gap: 12px; }
+  .range-val { font-family: 'Space Mono', monospace; font-size: 13px; font-weight: 700; color: var(--accent); min-width: 36px; text-align: right; }
+  .btn-convert { width: 100%; padding: 18px; background: var(--accent); color: var(--bg); border: none; border-radius: 2px; font-family: 'Space Mono', monospace; font-size: 13px; font-weight: 700; letter-spacing: 3px; text-transform: uppercase; cursor: pointer; transition: all 0.15s; margin-top: 8px; clip-path: polygon(12px 0%, 100% 0%, calc(100% - 12px) 100%, 0% 100%); }
+  .btn-convert:hover:not(:disabled) { background: #f5ff6e; transform: translateY(-1px); box-shadow: 0 8px 24px rgba(232,255,58,0.25); }
+  .btn-convert:disabled { opacity: 0.4; cursor: not-allowed; }
+  .progress-section { display: none; margin-top: 20px; }
+  .progress-section.show { display: block; }
+  .progress-bar-wrap { background: var(--progress-bg); border-radius: 2px; height: 8px; overflow: hidden; margin-bottom: 12px; border: 1px solid var(--border); }
+  .progress-bar { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2)); width: 0%; transition: width 0.4s; border-radius: 2px; position: relative; overflow: hidden; }
+  .progress-bar::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent); animation: shimmer 1.5s infinite; }
+  @keyframes shimmer { 0%{transform:translateX(-100%)} 100%{transform:translateX(100%)} }
+  .progress-info { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+  .progress-label { font-family: 'Space Mono', monospace; font-size: 11px; color: var(--muted); }
+  .progress-pct { font-family: 'Space Mono', monospace; font-size: 14px; font-weight: 700; color: var(--accent); }
+  .log-box { background: var(--surface); border: 1px solid var(--border); border-radius: 2px; padding: 14px; height: 130px; overflow-y: auto; font-family: 'Space Mono', monospace; font-size: 10px; line-height: 1.7; }
+  .log-line { color: var(--muted); } .log-ok { color: var(--success); } .log-err { color: var(--error); } .log-info { color: var(--accent); }
+  .download-section { display: none; text-align: center; padding: 28px; background: rgba(58,255,160,0.05); border: 1px solid rgba(58,255,160,0.2); border-radius: 2px; margin-top: 16px; }
+  .download-section.show { display: block; }
+  .download-title { font-size: 1.2rem; font-weight: 700; margin-bottom: 6px; }
+  .download-title span { color: var(--success); }
+  .download-sub { font-family: 'Space Mono', monospace; font-size: 11px; color: var(--muted); margin-bottom: 20px; }
+  .btn-download { display: inline-flex; align-items: center; gap: 10px; padding: 14px 32px; background: var(--success); color: var(--bg); border: none; border-radius: 2px; font-family: 'Space Mono', monospace; font-size: 12px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; cursor: pointer; text-decoration: none; transition: all 0.15s; }
+  .btn-download:hover { background: #5fffb8; transform: translateY(-1px); box-shadow: 0 6px 20px rgba(58,255,160,0.3); }
+  .status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); margin-right: 8px; flex-shrink: 0; }
+  .status-dot.loading { background: var(--accent); animation: pulse 1s infinite; }
+  .status-dot.ready   { background: var(--success); }
+  .status-dot.error   { background: var(--error); }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+  .ffmpeg-status { font-family: 'Space Mono', monospace; font-size: 11px; color: var(--muted); margin-bottom: 20px; display: flex; align-items: center; }
+  .info-box { background: rgba(232,255,58,0.05); border: 1px solid rgba(232,255,58,0.2); border-radius: 2px; padding: 16px; font-family: 'Space Mono', monospace; font-size: 10px; color: #c8df6a; line-height: 2; margin-bottom: 16px; }
+  .info-box strong { color: var(--accent); }
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: var(--surface); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <div class="logo-badge">VideoForge</div>
+    <h1>CONVERTIS<br>TA <span>VIDÉO</span></h1>
+    <p class="subtitle">MP4 · WebM · MKV — 100% navigateur</p>
+  </header>
+
+  <div class="ffmpeg-status">
+    <span class="status-dot loading" id="statusDot"></span>
+    <span id="statusText">Chargement de FFmpeg… (~10–30 secondes)</span>
+  </div>
+
+  <div class="card">
+    <div class="card-title">01 · Importer la vidéo</div>
+    <div class="drop-zone" id="dropZone">
+      <input type="file" id="fileInput" accept="video/*">
+      <span class="drop-icon">🎬</span>
+      <div class="drop-title">Glisse ta vidéo ici</div>
+      <div class="drop-sub">ou clique pour parcourir · MP4, MOV, AVI, MKV, WebM…</div>
+    </div>
+    <div class="file-info" id="fileInfo">
+      <span class="file-info-icon">📹</span>
+      <div>
+        <div class="file-info-name" id="fileName">—</div>
+        <div class="file-info-size" id="fileSize">—</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">02 · Paramètres de conversion</div>
+    <div class="options-grid">
+      <div class="option-group">
+        <label>Format de sortie</label>
+        <select id="formatSelect">
+          <option value="mp4">MP4 (H.264)</option>
+          <option value="webm">WebM (VP9)</option>
+          <option value="mkv">MKV (H.264)</option>
+        </select>
+      </div>
+      <div class="option-group">
+        <label>Résolution</label>
+        <select id="resSelect">
+          <option value="">Originale (recommandé)</option>
+          <option value="scale=3840:2160">4K — 3840×2160</option>
+          <option value="scale=1920:1080">Full HD — 1920×1080</option>
+          <option value="scale=1280:720">HD — 1280×720</option>
+          <option value="scale=854:480">SD — 854×480</option>
+          <option value="scale=640:360">360p — 640×360</option>
+        </select>
+      </div>
+      <div class="option-group">
+        <label>Images par seconde (FPS)</label>
+        <select id="fpsSelect">
+          <option value="">Original</option>
+          <option value="60">60 FPS</option>
+          <option value="30">30 FPS</option>
+          <option value="25">25 FPS (PAL)</option>
+          <option value="24">24 FPS (Cinéma)</option>
+          <option value="15">15 FPS</option>
+        </select>
+      </div>
+      <div class="option-group">
+        <label>Qualité vidéo (CRF)</label>
+        <div class="range-row">
+          <input type="range" id="qualitySlider" min="0" max="51" value="23">
+          <span class="range-val" id="qualityVal">23</span>
+        </div>
+        <div style="font-family:'Space Mono',monospace;font-size:9px;color:var(--muted);margin-top:4px;">0 = meilleure qualité · 51 = plus compressé</div>
+      </div>
+      <div class="option-group full">
+        <label>Audio</label>
+        <select id="audioSelect">
+          <option value="copy">Copier l'audio (rapide)</option>
+          <option value="aac">Réencoder en AAC</option>
+          <option value="none">Supprimer l'audio</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <div class="info-box">
+    💡 <strong>Conversion 100% dans ton navigateur</strong> — aucun fichier envoyé sur internet.<br>
+    ⏱ Vidéos lourdes (&gt;300 Mo) = plusieurs minutes selon ton PC.<br>
+    🔄 La page se recharge automatiquement une fois au 1er chargement — c'est normal !
+  </div>
+
+  <button class="btn-convert" id="convertBtn" disabled>▶ LANCER LA CONVERSION</button>
+
+  <div class="progress-section" id="progressSection">
+    <div class="card" style="padding:20px;">
+      <div class="card-title">03 · Progression</div>
+      <div class="progress-info">
+        <span class="progress-label" id="progressLabel">En attente…</span>
+        <span class="progress-pct" id="progressPct">—</span>
+      </div>
+      <div class="progress-bar-wrap"><div class="progress-bar" id="progressBar"></div></div>
+      <div class="log-box" id="logBox"><span class="log-info">// Logs FFmpeg en temps réel…</span></div>
+    </div>
+  </div>
+
+  <div class="download-section" id="downloadSection">
+    <div class="download-title">✅ <span>Conversion terminée !</span></div>
+    <div class="download-sub" id="downloadInfo">Fichier prêt</div>
+    <a id="downloadLink" class="btn-download">⬇ TÉLÉCHARGER LA VIDÉO</a>
+  </div>
+
+</div>
+
+<script src="https://unpkg.com/@ffmpeg/ffmpeg@0.11.6/dist/ffmpeg.min.js"></script>
+<script>
+(function () {
+  'use strict';
+  const { createFFmpeg, fetchFile } = FFmpeg;
+  let ff = null, inputFile = null, isReady = false;
+  const el = id => document.getElementById(id);
+
+  function log(msg, cls) {
+    const d = document.createElement('div');
+    d.className = cls || 'log-line';
+    d.textContent = msg;
+    el('logBox').appendChild(d);
+    el('logBox').scrollTop = el('logBox').scrollHeight;
+  }
+
+  function fmtBytes(b) {
+    if (!b) return '0 o';
+    const k = 1024, u = ['o','Ko','Mo','Go'];
+    const i = Math.floor(Math.log(b) / Math.log(k));
+    return (b / Math.pow(k, i)).toFixed(2) + ' ' + u[i];
+  }
+
+  function refreshBtn() { el('convertBtn').disabled = !(isReady && inputFile); }
+
+  async function loadFFmpeg() {
+    try {
+      ff = createFFmpeg({
+        log: true,
+        logger: ({ message }) => { if (message && message.trim()) log(message); },
+        progress: ({ ratio }) => {
+          if (ratio >= 0 && ratio <= 1) {
+            const p = Math.round(ratio * 100);
+            el('progressBar').style.width = p + '%';
+            el('progressPct').textContent = p + '%';
+          }
+        }
+      });
+      await ff.load();
+      isReady = true;
+      el('statusDot').className = 'status-dot ready';
+      el('statusText').textContent = '✅ FFmpeg prêt — importe ta vidéo !';
+      refreshBtn();
+    } catch (e) {
+      el('statusDot').className = 'status-dot error';
+      el('statusText').textContent = '❌ Erreur chargement : ' + e.message;
+      console.error(e);
+    }
+  }
+
+  function handleFile(file) {
+    if (!file || !file.type.startsWith('video/')) return;
+    inputFile = file;
+    el('fileName').textContent = file.name;
+    el('fileSize').textContent  = fmtBytes(file.size);
+    el('fileInfo').classList.add('show');
+    el('downloadSection').classList.remove('show');
+    refreshBtn();
+  }
+
+  el('fileInput').addEventListener('change', e => handleFile(e.target.files[0]));
+  const dz = el('dropZone');
+  dz.addEventListener('dragover',  e => { e.preventDefault(); dz.classList.add('drag-over'); });
+  dz.addEventListener('dragleave', ()  => dz.classList.remove('drag-over'));
+  dz.addEventListener('drop',      e  => { e.preventDefault(); dz.classList.remove('drag-over'); handleFile(e.dataTransfer.files[0]); });
+  el('qualitySlider').addEventListener('input', () => { el('qualityVal').textContent = el('qualitySlider').value; });
+
+  el('convertBtn').addEventListener('click', async () => {
+    if (!isReady || !inputFile) return;
+    el('convertBtn').disabled = true;
+    el('progressSection').classList.add('show');
+    el('downloadSection').classList.remove('show');
+    el('logBox').innerHTML = '';
+    el('progressBar').style.width = '0%';
+    el('progressPct').textContent  = '0%';
+    el('progressLabel').textContent = 'Lecture du fichier…';
+
+    try {
+      const format = el('formatSelect').value;
+      const res    = el('resSelect').value;
+      const fps    = el('fpsSelect').value;
+      const crf    = el('qualitySlider').value;
+      const audio  = el('audioSelect').value;
+      const inExt  = (inputFile.name.split('.').pop() || 'mp4').toLowerCase();
+      const inName = 'in.' + inExt;
+      const outName= 'out.' + format;
+
+      log('📂 Chargement en mémoire…', 'log-info');
+      ff.FS('writeFile', inName, await fetchFile(inputFile));
+
+      const args = ['-i', inName];
+      if (format === 'webm') {
+        args.push('-c:v', 'libvpx-vp9', '-crf', crf, '-b:v', '0');
+      } else {
+        args.push('-c:v', 'libx264', '-crf', crf, '-preset', 'ultrafast');
+      }
+      const vf = [];
+      if (res) vf.push(res);
+      if (fps) vf.push('fps=' + fps);
+      if (vf.length) args.push('-vf', vf.join(','));
+      if      (audio === 'none') args.push('-an');
+      else if (audio === 'copy') args.push('-c:a', 'copy');
+      else                       args.push('-c:a', audio);
+      if (format === 'mkv') args.push('-f', 'matroska');
+      args.push('-y', outName);
+
+      log('▶ ffmpeg ' + args.join(' '), 'log-info');
+      el('progressLabel').textContent = 'Conversion en cours… (patiente)';
+      await ff.run(...args);
+
+      const data  = ff.FS('readFile', outName);
+      const mimes = { mp4: 'video/mp4', webm: 'video/webm', mkv: 'video/x-matroska' };
+      const blob  = new Blob([data.buffer], { type: mimes[format] || 'video/mp4' });
+      const url   = URL.createObjectURL(blob);
+
+      el('downloadLink').href      = url;
+      el('downloadLink').download  = outName;
+      el('downloadInfo').textContent = 'Taille : ' + fmtBytes(blob.size);
+      el('downloadSection').classList.add('show');
+      el('progressBar').style.width   = '100%';
+      el('progressPct').textContent   = '100%';
+      el('progressLabel').textContent = '✅ Terminé !';
+      log('✅ Succès !', 'log-ok');
+      try { ff.FS('unlink', inName); ff.FS('unlink', outName); } catch(e) {}
+    } catch (err) {
+      log('❌ Erreur : ' + err.message, 'log-err');
+      el('progressLabel').textContent = '❌ Erreur.';
+      console.error(err);
+    }
+    el('convertBtn').disabled = false;
+  });
+
+  loadFFmpeg();
+})();
+</script>
+</body>
+</html>
